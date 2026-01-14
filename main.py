@@ -54,10 +54,22 @@ except Exception as e:
     logger.warning(f"NER service unavailable: {e}. Continuing without NER.")
     app.state.ner = None
 
-app.state.rag = RAGEngine(model_name=settings.embedding_model)
-app.state.cache = CacheManager(redis_url=settings.redis_url, ttl=settings.redis_ttl)
-# Pass cache manager to RAG engine
-app.state.rag.cache_manager = app.state.cache
+# RAG is optional - skip if model not available
+try:
+    app.state.rag = RAGEngine(model_name=settings.embedding_model)
+except Exception as e:
+    logger.warning(f"RAG service unavailable: {e}. Continuing without RAG.")
+    app.state.rag = None
+
+# Cache manager - can run without Redis
+try:
+    app.state.cache = CacheManager(redis_url=settings.redis_url, ttl=settings.redis_ttl)
+    # Pass cache manager to RAG engine if RAG is available
+    if app.state.rag:
+        app.state.rag.cache_manager = app.state.cache
+except Exception as e:
+    logger.warning(f"Cache service unavailable: {e}. Continuing without caching.")
+    app.state.cache = None
 app.state.settings = settings
 
 # Add middleware
