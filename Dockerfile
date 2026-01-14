@@ -18,6 +18,9 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Download spacy model for NER (optional, will continue if fails)
+RUN python -m spacy download en_core_web_sm || true
+
 # Copy application code
 COPY . .
 
