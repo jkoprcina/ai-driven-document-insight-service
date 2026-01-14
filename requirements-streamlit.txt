@@ -1,0 +1,7 @@
+# Streamlit web UI requirements
+# Install with: pip install -r requirements-streamlit.txt
+
+streamlit==1.28.1
+requests==2.31.0
+Pillow==10.0.0
+pandas==2.1.3
