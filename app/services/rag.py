@@ -163,7 +163,7 @@ class RAGEngine:
     ) -> str:
         """
         Augment context for QA by retrieving relevant chunks.
-        Uses semantic search to find relevant sections even in large documents.
+        Uses semantic search to find relevant sections, sorted in document order.
         
         Args:
             session_id: Session ID
@@ -171,20 +171,21 @@ class RAGEngine:
             max_context_length: Maximum length of augmented context (default 4000 chars)
             
         Returns:
-            Augmented context string
+            Augmented context string with chunks in natural document order
         """
         try:
-            # Retrieve more chunks for better coverage of large documents
-            # Increased from 5 to 10 to capture more relevant context
+            # Retrieve relevant chunks ranked by semantic similarity
             chunks = self.retrieve_relevant_chunks(session_id, question, top_k=10)
             
             if not chunks:
-                # Fallback to all documents
+                # Fallback to all documents if no chunks found
                 docs = self.indices[session_id]["documents"]
                 context = "\n\n".join(docs.values())
             else:
-                # Combine chunks
-                context = "\n\n".join([chunk["chunk"] for chunk in chunks])
+                # Sort chunks by original document position for natural reading flow
+                chunks_sorted = sorted(chunks, key=lambda x: x["metadata"]["start"])
+                # Combine chunks in document order
+                context = "\n\n".join([chunk["chunk"] for chunk in chunks_sorted])
             
             # Truncate if needed
             if len(context) > max_context_length:

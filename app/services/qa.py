@@ -30,7 +30,8 @@ class QAEngine:
     def answer(self, question: str, context: str, top_k: int = 1) -> dict:
         """
         Answer a question based on the provided context.
-        Iterates through document chunks to process full document content.
+        Uses DistilBERT QA model on the provided context.
+        Note: For large documents, use RAG-augmented context via answer_from_documents().
         
         Args:
             question: The question to answer
@@ -49,47 +50,18 @@ class QAEngine:
                     "end": 0
                 }
             
-            # Process document in chunks to handle content larger than 4000 chars
-            chunk_size = 4000
-            chunk_overlap = 200  # Overlap between chunks to maintain context
+            result = self.qa_pipeline(question=question, context=context, top_k=top_k)
             
-            best_result = {
-                "answer": "",
-                "score": 0.0,
-                "start": 0,
-                "end": 0
+            # Handle list response from pipeline
+            if isinstance(result, list):
+                result = result[0]
+            
+            return {
+                "answer": result.get("answer", ""),
+                "score": float(result.get("score", 0.0)),
+                "start": result.get("start", 0),
+                "end": result.get("end", 0)
             }
-            
-            # Generate overlapping chunks from the document
-            chunks = []
-            for i in range(0, len(context), chunk_size - chunk_overlap):
-                chunk = context[i:i + chunk_size]
-                chunks.append((i, chunk))
-            
-            # Process each chunk and find the best answer
-            for chunk_offset, chunk in chunks:
-                try:
-                    result = self.qa_pipeline(question=question, context=chunk, top_k=top_k)
-                    
-                    # Handle list response from pipeline
-                    if isinstance(result, list):
-                        result = result[0]
-                    
-                    current_score = float(result.get("score", 0.0))
-                    
-                    # Update best result if this chunk has a better score
-                    if current_score > best_result["score"]:
-                        best_result = {
-                            "answer": result.get("answer", ""),
-                            "score": current_score,
-                            "start": result.get("start", 0) + chunk_offset,
-                            "end": result.get("end", 0) + chunk_offset
-                        }
-                except Exception as chunk_error:
-                    logger.debug(f"Error processing chunk at offset {chunk_offset}: {chunk_error}")
-                    continue
-            
-            return best_result
         except Exception as e:
             logger.error(f"Error answering question: {e}")
             return {
@@ -101,13 +73,14 @@ class QAEngine:
     
     def answer_from_documents(self, question: str, documents: dict, session_id: str = None, top_k: int = 1, max_context_length: int = 4000) -> dict:
         """
-        Answer a question by searching across multiple documents.
-        Uses RAG if available for semantic chunk retrieval.
+        Answer a question by searching across documents.
+        Uses RAG for semantic retrieval across all documents if available.
+        For single small documents or when RAG unavailable, falls back to direct search.
         
         Args:
             question: The question to answer
             documents: Dictionary of {doc_id: doc_text}
-            session_id: Optional session ID for RAG index lookup
+            session_id: Optional session ID for RAG index lookup (recommended for better results)
             top_k: Number of top answers to return
             max_context_length: Maximum context length for QA model
             
@@ -120,10 +93,14 @@ class QAEngine:
             "source": None
         }
         
-        # Use RAG if available and session_id provided
+        # Prioritize RAG for multi-document and large document searches
         if self.rag_engine and session_id:
             try:
-                augmented_context = self.rag_engine.augment_context(session_id, question, max_context_length=max_context_length)
+                augmented_context = self.rag_engine.augment_context(
+                    session_id, 
+                    question, 
+                    max_context_length=max_context_length
+                )
                 if augmented_context and augmented_context.strip():
                     result = self.answer(question, augmented_context, top_k=1)
                     if result and result.get("answer"):
@@ -132,19 +109,27 @@ class QAEngine:
                             "score": result["score"],
                             "source": "RAG-retrieved-chunks"
                         }
-                    return best_answer
+                        logger.info(f"Answer found via RAG with score {result['score']:.4f}")
+                        return best_answer
+                else:
+                    logger.warning(f"RAG returned empty context for question: {question}")
             except Exception as e:
-                logger.warning(f"RAG retrieval failed, falling back to full-document search: {e}")
-                # Fall through to document-based search below
+                logger.warning(f"RAG retrieval failed: {e}")
+                # Fall through to fallback search below
         
-        # Fall back to searching all documents if RAG unavailable or failed
+        # Fallback: search documents directly
+        # This handles cases where RAG is unavailable or for single document searches
+        logger.info(f"Falling back to direct document search ({len(documents)} documents)")
         for doc_id, doc_text in documents.items():
-            result = self.answer(question, doc_text, top_k=1)
+            # Limit context to avoid token limits
+            context = doc_text[:max_context_length] if len(doc_text) > max_context_length else doc_text
+            result = self.answer(question, context, top_k=1)
             if result["score"] > best_answer["score"]:
                 best_answer = {
                     "answer": result["answer"],
                     "score": result["score"],
                     "source": doc_id
                 }
+                logger.info(f"Answer found in document {doc_id} with score {result['score']:.4f}")
         
         return best_answer
