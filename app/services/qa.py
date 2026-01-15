@@ -30,6 +30,7 @@ class QAEngine:
     def answer(self, question: str, context: str, top_k: int = 1) -> dict:
         """
         Answer a question based on the provided context.
+        Iterates through document chunks to process full document content.
         
         Args:
             question: The question to answer
@@ -48,24 +49,47 @@ class QAEngine:
                     "end": 0
                 }
             
-            # Limit context to avoid token limits (DistilBERT: ~512 tokens ≈ 2000 chars)
-            # Increased to 4000 to handle larger chunks from RAG with multiple retrieved sections
-            max_chars = 4000
-            if len(context) > max_chars:
-                context = context[:max_chars]
+            # Process document in chunks to handle content larger than 4000 chars
+            chunk_size = 4000
+            chunk_overlap = 200  # Overlap between chunks to maintain context
             
-            result = self.qa_pipeline(question=question, context=context, top_k=top_k)
-            
-            # Return top result if multiple
-            if isinstance(result, list):
-                result = result[0]
-            
-            return {
-                "answer": result.get("answer", ""),
-                "score": float(result.get("score", 0.0)),
-                "start": result.get("start", 0),
-                "end": result.get("end", 0)
+            best_result = {
+                "answer": "",
+                "score": 0.0,
+                "start": 0,
+                "end": 0
             }
+            
+            # Generate overlapping chunks from the document
+            chunks = []
+            for i in range(0, len(context), chunk_size - chunk_overlap):
+                chunk = context[i:i + chunk_size]
+                chunks.append((i, chunk))
+            
+            # Process each chunk and find the best answer
+            for chunk_offset, chunk in chunks:
+                try:
+                    result = self.qa_pipeline(question=question, context=chunk, top_k=top_k)
+                    
+                    # Handle list response from pipeline
+                    if isinstance(result, list):
+                        result = result[0]
+                    
+                    current_score = float(result.get("score", 0.0))
+                    
+                    # Update best result if this chunk has a better score
+                    if current_score > best_result["score"]:
+                        best_result = {
+                            "answer": result.get("answer", ""),
+                            "score": current_score,
+                            "start": result.get("start", 0) + chunk_offset,
+                            "end": result.get("end", 0) + chunk_offset
+                        }
+                except Exception as chunk_error:
+                    logger.debug(f"Error processing chunk at offset {chunk_offset}: {chunk_error}")
+                    continue
+            
+            return best_result
         except Exception as e:
             logger.error(f"Error answering question: {e}")
             return {
