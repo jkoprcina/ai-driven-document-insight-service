@@ -66,30 +66,25 @@ def render_chat_tab():
         })
         
         with st.spinner("Analyzing documents..."):
-            # Request detailed answers from all documents
-            result = ask_question(st.session_state.session_id, question, detailed=True)
+            # Request answer from documents
+            result = ask_question(st.session_state.session_id, question)
             
             if result:
-                answers = result.get('answers', [])
-                
-                if answers:
-                    # Keep only the highest-confidence answer
-                    best = max(answers, key=lambda a: a.get('confidence', 0.0))
-                    st.session_state.chat_history.append({
-                        "role": "assistant",
-                        "content": best.get('answer', 'No answer'),
-                        "confidence": best.get('confidence', 0.0),
-                        "source_doc": best.get('doc_id', 'Unknown source'),
-                        "entities": best.get('entities')
-                    })
-                else:
-                    st.session_state.chat_history.append({
-                        "role": "assistant",
-                        "content": "No relevant information found in the documents.",
-                        "confidence": 0.0,
-                        "source_doc": "None",
-                        "entities": None
-                    })
-                # Persist chat history for this session
-                st.session_state.session_histories[st.session_state.session_id] = st.session_state.chat_history
-                st.rerun()
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": result.get('answer', 'No answer found'),
+                    "confidence": result.get('confidence', 0.0),
+                    "source_doc": result.get('source_doc', 'Unknown source'),
+                    "entities": result.get('entities')
+                })
+            else:
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": "No relevant information found in the documents.",
+                    "confidence": 0.0,
+                    "source_doc": "None",
+                    "entities": None
+                })
+            # Persist chat history for this session
+            st.session_state.session_histories[st.session_state.session_id] = st.session_state.chat_history
+            st.rerun()

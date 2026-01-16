@@ -26,6 +26,10 @@ from app.middleware import (
 # Get settings
 settings = get_settings()
 
+# Validate SECRET_KEY is set and not default
+if not settings.secret_key:
+    raise ValueError("CRITICAL: SECRET_KEY environment variable must be set")
+
 # Configure logging
 LoggingManager.configure_logging(
     log_level=settings.log_level,

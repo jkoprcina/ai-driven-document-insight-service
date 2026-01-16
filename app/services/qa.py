@@ -71,6 +71,30 @@ class QAEngine:
                 "end": 0
             }
     
+    def augment_context(self, session_id: str, question: str, max_context_length: int = 4000) -> str:
+        """
+        Retrieve and combine relevant chunks for context augmentation.
+        
+        Args:
+            session_id: Session ID for RAG index
+            question: Question to find relevant context for
+            max_context_length: Maximum context length
+            
+        Returns:
+            Augmented context string
+        """
+        try:
+            if not self.rag_engine:
+                return ""
+            chunks = self.rag_engine.retrieve_relevant_chunks(session_id, question, top_k=3)
+            if not chunks:
+                return ""
+            context = "\n\n".join([c["chunk"] for c in chunks])
+            return context[:max_context_length]
+        except Exception as e:
+            logger.warning(f"Error augmenting context: {e}")
+            return ""
+    
     def answer_from_documents(self, question: str, documents: dict, session_id: str = None, top_k: int = 1, max_context_length: int = 4000) -> dict:
         """
         Answer a question by searching across documents.
@@ -96,7 +120,7 @@ class QAEngine:
         # Prioritize RAG for multi-document and large document searches
         if self.rag_engine and session_id:
             try:
-                augmented_context = self.rag_engine.augment_context(
+                augmented_context = self.augment_context(
                     session_id, 
                     question, 
                     max_context_length=max_context_length

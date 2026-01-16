@@ -8,6 +8,7 @@ import pickle
 import logging
 from typing import Optional, Any, Dict
 import hashlib
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -64,10 +65,11 @@ class CacheManager:
                 serialized = pickle.dumps(value)
                 self.redis_client.setex(key, ttl, serialized)
             else:
-                # In-memory fallback
+                # In-memory fallback - store with timestamp
                 self.in_memory_cache[key] = {
                     "value": value,
-                    "ttl": ttl
+                    "ttl": ttl,
+                    "timestamp": datetime.now()
                 }
             
             return True
@@ -77,7 +79,7 @@ class CacheManager:
     
     def get(self, key: str) -> Optional[Any]:
         """
-        Get cache value.
+        Get cache value with TTL validation for in-memory cache.
         
         Args:
             key: Cache key
@@ -91,9 +93,18 @@ class CacheManager:
                 if value:
                     return pickle.loads(value)
             else:
-                # In-memory fallback
+                # In-memory fallback - validate TTL
                 if key in self.in_memory_cache:
-                    return self.in_memory_cache[key]["value"]
+                    entry = self.in_memory_cache[key]
+                    # Check if TTL has expired
+                    if "timestamp" in entry:
+                        set_time = entry["timestamp"]
+                        ttl = entry.get("ttl", self.ttl)
+                        if datetime.now() > set_time + timedelta(seconds=ttl):
+                            # Expired, remove and return None
+                            del self.in_memory_cache[key]
+                            return None
+                    return entry["value"]
             
             return None
         except Exception as e:

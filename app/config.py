@@ -22,10 +22,7 @@ class Settings(BaseSettings):
     reload: bool = Field(default=False, env="RELOAD")
     
     # Security Configuration
-    secret_key: str = Field(
-        default="your-secret-key-change-in-production",
-        env="SECRET_KEY"
-    )
+    secret_key: str = Field(env="SECRET_KEY")
     jwt_algorithm: str = Field(default="HS256", env="JWT_ALGORITHM")
     access_token_expire_minutes: int = Field(default=30, env="TOKEN_EXPIRE_MINUTES")
     

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import logging
+import hashlib
 from app.services.qa import QAEngine
 from app.dependencies import verify_token
 from app.middleware import limiter
@@ -64,7 +65,7 @@ async def ask_question(request: Request, query: QuestionRequest, token: dict = D
     """
     session_storage = request.app.state.session_storage
     qa_engine = get_qa_engine(request)
-    cache_manager = request.app.state.cache
+    cache_manager = getattr(request.app.state, 'cache', None)
     
     # Validate session
     if not session_storage.session_exists(query.session_id):
@@ -72,7 +73,7 @@ async def ask_question(request: Request, query: QuestionRequest, token: dict = D
     
     # Check cache first (only for multi-doc queries, not single doc)
     cached_result = None
-    if not query.doc_id:
+    if cache_manager and not query.doc_id:
         cached_result = cache_manager.get_qa_result(query.session_id, query.question)
         if cached_result:
             logger.info(f"Cache hit for question in session {query.session_id}")
@@ -131,7 +132,7 @@ async def ask_question(request: Request, query: QuestionRequest, token: dict = D
     }
     
     # Cache result for multi-doc queries
-    if not query.doc_id:
+    if cache_manager and not query.doc_id:
         cache_manager.cache_qa_result(query.session_id, query.question, response_data)
     
     return AnswerResponse(**response_data)
@@ -153,29 +154,33 @@ async def ask_question_detailed(request: Request, query: QuestionRequest, token:
     """
     session_storage = request.app.state.session_storage
     qa_engine = get_qa_engine(request)
-    cache_manager = request.app.state.cache
+    cache_manager = getattr(request.app.state, 'cache', None)
     
     # Validate session
     if not session_storage.session_exists(query.session_id):
         raise HTTPException(status_code=404, detail="Session not found")
     
     # Check cache first
-    cache_key = f"qa_detailed:{query.session_id}:{query.question}"
-    try:
-        import hashlib
-        question_hash = hashlib.md5(query.question.encode()).hexdigest()
-        cache_key = f"qa_detailed:{query.session_id}:{question_hash}"
-        cached_result = cache_manager.get(cache_key)
-        if cached_result:
-            logger.info(f"Cache hit for detailed question in session {query.session_id}")
-            return cached_result
-    except Exception as e:
-        logger.warning(f"Error checking cache: {e}")
+    cached_result = None
+    if cache_manager:
+        try:
+            question_hash = hashlib.md5(query.question.encode()).hexdigest()
+            check_cache_key = f"qa_detailed:{query.session_id}:{question_hash}"
+            cached_result = cache_manager.get(check_cache_key)
+            if cached_result:
+                logger.info(f"Cache hit for detailed question in session {query.session_id}")
+                return cached_result
+        except Exception as e:
+            logger.warning(f"Error checking cache: {e}")
     
     # Get documents
     documents = session_storage.get_all_texts(query.session_id)
     if not documents:
         raise HTTPException(status_code=400, detail="No documents in session")
+    
+    # Create cache key for later use
+    question_hash = hashlib.md5(query.question.encode()).hexdigest()
+    cache_key = f"qa_detailed:{query.session_id}:{question_hash}"
     
     # Get answers from each document
     answers = []
@@ -228,9 +233,10 @@ async def ask_question_detailed(request: Request, query: QuestionRequest, token:
     }
     
     # Cache result
-    try:
-        cache_manager.set(cache_key, response_data, ttl=3600)
-    except Exception as e:
-        logger.warning(f"Error caching detailed QA result: {e}")
+    if cache_manager:
+        try:
+            cache_manager.set(cache_key, response_data, ttl=3600)
+        except Exception as e:
+            logger.warning(f"Error caching detailed QA result: {e}")
     
     return response_data

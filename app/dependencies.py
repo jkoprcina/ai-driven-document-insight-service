@@ -8,8 +8,8 @@ from app.services.monitoring import LoggingManager
 logger = LoggingManager.get_logger(__name__)
 
 async def verify_token(
-    authorization: Optional[str] = Header(None),
-    request: Request = None
+    request: Request,
+    authorization: Optional[str] = Header(None)
 ) -> dict:
     """
     Verify JWT token from Authorization header.
@@ -75,8 +75,8 @@ async def get_current_user(
     return username
 
 async def optional_auth(
-    authorization: Optional[str] = Header(None),
-    request: Request = None
+    request: Request,
+    authorization: Optional[str] = Header(None)
 ) -> Optional[dict]:
     """
     Optional authentication (for public endpoints with auth support).

@@ -110,7 +110,8 @@ def test_rag_integration():
     if qa_detailed_resp.status_code == 200:
         result = qa_detailed_resp.json()
         print(f"SUCCESS: Got detailed answer")
-        print(f"  Best answer: {result['answer']}")
+        best_ans = result.get('best_answer', {}).get('answer', 'N/A')
+        print(f"  Best answer: {best_ans}")
         print(f"  Total answers from documents: {len(result['answers'])}")
         for answer in result["answers"][:2]:
             print(f"  - [{answer['confidence']:.4f}] {answer['answer'][:50]}...")

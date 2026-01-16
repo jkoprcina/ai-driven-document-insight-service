@@ -3,6 +3,7 @@ API client for communicating with the Document QA API.
 """
 import streamlit as st
 import requests
+from requests.exceptions import RequestException, Timeout, ConnectionError
 from typing import Optional, List
 from config import (
     API_BASE_URL, 
@@ -20,7 +21,7 @@ def check_api_health():
     try:
         response = requests.get(f"{API_BASE_URL}/health", timeout=API_HEALTH_TIMEOUT)
         return response.status_code == 200
-    except:
+    except (RequestException, Timeout, ConnectionError):
         return False
 
 
@@ -54,7 +55,7 @@ def upload_documents(files, session_id=None):
         else:
             st.error(f"Upload failed: {response.text}")
             return None
-    except Exception as e:
+    except (RequestException, Timeout, ConnectionError) as e:
         st.error(f"Error uploading documents: {str(e)}")
         return None
 
@@ -90,7 +91,7 @@ def ask_question(session_id: str, question: str, detailed: bool = False):
         else:
             st.error(f"Error: {response.text}")
             return None
-    except Exception as e:
+    except (RequestException, Timeout, ConnectionError) as e:
         st.error(f"Error asking question: {str(e)}")
         return None
 
@@ -116,7 +117,7 @@ def get_session_info(session_id: str):
             return response.json()
         else:
             return None
-    except Exception as e:
+    except (RequestException, Timeout, ConnectionError) as e:
         st.error(f"Error retrieving session: {str(e)}")
         return None
 
@@ -138,7 +139,7 @@ def delete_session(session_id: str):
             timeout=API_SESSION_TIMEOUT
         )
         return response.status_code == 200
-    except Exception as e:
+    except (RequestException, Timeout, ConnectionError) as e:
         st.error(f"Error deleting session: {str(e)}")
         return False
 
@@ -160,6 +161,6 @@ def get_sessions_list():
             data = resp.json()
             return data.get("sessions", []) or []
         return []
-    except Exception:
+    except (RequestException, Timeout, ConnectionError):
         return []
 

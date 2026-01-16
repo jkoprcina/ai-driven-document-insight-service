@@ -102,10 +102,10 @@ async def create_session(request: Request, token: dict = Depends(verify_token)):
 @router.post("/upload")
 async def upload_documents(
     request: Request,
-    files: List[UploadFile] = File(...),
-    session_id: str = None,
+    background_tasks: BackgroundTasks,
     token: dict = Depends(verify_token),
-    background_tasks: BackgroundTasks = None
+    files: List[UploadFile] = File(...),
+    session_id: str = None
 ):
     """
     Upload one or more documents (PDF or image).
@@ -298,7 +298,7 @@ async def delete_session(request: Request, session_id: str, token: dict = Depend
     # Clean up RAG index if available
     if request.app.state.rag:
         try:
-            request.app.state.rag.clear_session_index(session_id)
+            request.app.state.rag.delete_session(session_id)
             logger.info(f"Cleaned up RAG index for session {session_id}")
         except Exception as e:
             logger.warning(f"Failed to clean up RAG index for session {session_id}: {e}")

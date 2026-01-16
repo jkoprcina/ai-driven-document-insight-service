@@ -8,6 +8,7 @@ from sentence_transformers import SentenceTransformer
 from typing import List, Dict, Tuple, Optional
 import logging
 import os
+import shutil
 
 logger = logging.getLogger(__name__)
 
@@ -218,3 +219,21 @@ class RAGEngine:
             "embedding_dimension": idx_data["embeddings"].shape[1],
             "embedding_model": self.model.get_sentence_embedding_dimension()
         }
+    
+    def delete_session(self, session_id: str) -> None:
+        """
+        Delete RAG index and data for a session to free memory.
+        Called when session is deleted.
+        """
+        try:
+            # Delete from memory
+            if session_id in self.indices:
+                del self.indices[session_id]
+            
+            # Delete from disk
+            index_path = f"./rag_indices/{session_id}"
+            if os.path.exists(index_path):
+                shutil.rmtree(index_path, ignore_errors=True)
+                logger.info(f"Deleted RAG index for session {session_id}")
+        except Exception as e:
+            logger.error(f"Error deleting RAG session {session_id}: {e}")

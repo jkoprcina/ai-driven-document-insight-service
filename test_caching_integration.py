@@ -147,7 +147,8 @@ def test_caching_integration():
     if qa_detailed_resp.status_code == 200:
         result = qa_detailed_resp.json()
         print(f"SUCCESS: Got detailed answer in {detailed_first_time:.3f}s")
-        print(f"         Best answer: {result['answer'][:60]}...")
+        best_ans = result.get('best_answer', {}).get('answer', 'N/A')
+        print(f"         Best answer: {best_ans[:60]}...")
         print(f"         Total answers: {len(result.get('answers', []))}")
     else:
         print(f"ERROR: Detailed QA failed with status {qa_detailed_resp.status_code}")

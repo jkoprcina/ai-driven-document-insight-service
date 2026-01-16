@@ -61,6 +61,10 @@ class EntityRecognizer:
         Returns:
             Highlighted text with entity information
         """
+        if not self.nlp:
+            logger.warning("NER model not loaded, cannot highlight entities")
+            return {"text": text, "entities": [], "error": "NER model unavailable"}
+        
         try:
             doc = self.nlp(text)
             

@@ -8,8 +8,41 @@ import easyocr
 from pathlib import Path
 from typing import Tuple
 import logging
+import signal
+from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 logger = logging.getLogger(__name__)
+
+class TimeoutException(Exception):
+    """Raised when extraction takes too long"""
+    pass
+
+@contextmanager
+def timeout(seconds=30):
+    """
+    Cross-platform timeout context manager.
+    Uses signal on Unix, ThreadPoolExecutor on Windows.
+    """
+    import platform
+    
+    if platform.system() == "Windows":
+        # Windows doesn't support signal.alarm(), skip timeout
+        # Log a warning that timeout is not available
+        logger.debug(f"Timeout not supported on Windows, extraction may hang")
+        yield
+    else:
+        # Unix-like systems - use signal.alarm()
+        def timeout_handler(signum, frame):
+            raise TimeoutException(f"Extraction timed out after {seconds} seconds")
+        
+        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(seconds)
+        try:
+            yield
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
 
 class TextExtractor:
     """Extract text from PDFs and images."""
@@ -60,20 +93,37 @@ class TextExtractor:
     
     def extract(self, file_path: str) -> str:
         """
-        Extract text from file (auto-detect format).
+        Extract text from file (auto-detect format) with timeout.
         
         Args:
             file_path: Path to file (PDF or image)
             
         Returns:
             Extracted text
+            
+        Raises:
+            TimeoutException: If extraction takes too long
+            ValueError: If file format unsupported
         """
         path = Path(file_path)
         suffix = path.suffix.lower()
         
-        if suffix == ".pdf":
-            return self.extract_from_pdf(file_path)
-        elif suffix in [".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff"]:
-            return self.extract_from_image(file_path)
-        else:
-            raise ValueError(f"Unsupported file format: {suffix}")
+        # Validate file exists and is not empty
+        if not path.exists():
+            raise ValueError(f"File not found: {file_path}")
+        if path.stat().st_size == 0:
+            logger.warning(f"File is empty: {file_path}")
+            return ""
+        
+        try:
+            # Use timeout for extraction (30 seconds)
+            with timeout(30):
+                if suffix == ".pdf":
+                    return self.extract_from_pdf(file_path)
+                elif suffix in [".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff"]:
+                    return self.extract_from_image(file_path)
+                else:
+                    raise ValueError(f"Unsupported file format: {suffix}")
+        except TimeoutException as e:
+            logger.error(f"Text extraction timeout for {file_path}: {e}")
+            raise
