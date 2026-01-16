@@ -1,48 +1,72 @@
 # Document QA API - Complete Reference
 
-## API Versions
+## API Version
 
-- **v1**: Original endpoints (backward compatible)
-- **v2**: Enhanced endpoints with auth, monitoring, NER
+- **Current Version**: v1
 - **Base URL**: `http://localhost:8000`
+- **Documentation**: http://localhost:8000/docs (Swagger UI)
+- **Alternative Docs**: http://localhost:8000/redoc (ReDoc)
 
 ---
 
 ## Authentication
 
-### Get Token (Required for v1/v2 endpoints)
+### Get Token (Development Only)
 
-**Endpoint**: `POST /api/v2/login`
+**Endpoint**: `POST /api/v1/token`
+
+**Note**: ⚠️ This endpoint is for **testing purposes only**. In production, implement proper user authentication with username/password validation against a database.
 
 **Request**:
-```json
-{
-  "username": "testuser",
-  "password": "secret"
-}
+```bash
+curl -X POST http://localhost:8000/api/v1/token
 ```
 
 **Response** (200 OK):
 ```json
 {
   "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "bearer",
-  "expires_in": 1800
+  "token_type": "bearer"
 }
 ```
 
-**Usage**: Add header to requests:
+**Usage**: Add header to all protected endpoint requests:
 ```
 Authorization: Bearer <access_token>
 ```
 
-**Errors**:
-- `401`: Invalid credentials
-- `422`: Missing username/password
+**Rate Limit**: 5 requests/minute per IP
 
 ---
 
-## Document Management (v1)
+## Document Management
+
+### Create Session
+
+**Endpoint**: `POST /api/v1/session`
+
+**Headers**:
+```
+Authorization: Bearer <token>
+```
+
+**Request**:
+```bash
+curl -X POST http://localhost:8000/api/v1/session \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response** (200 OK):
+```json
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "created_at": "2026-01-16T10:30:00Z"
+}
+```
+
+**Rate Limit**: 20 requests/minute per IP
+
+---
 
 ### Upload Documents
 
@@ -69,29 +93,30 @@ curl -X POST http://localhost:8000/api/v1/upload \
   "documents": [
     {
       "filename": "contract.pdf",
-      "type": "application/pdf",
+      "status": "success",
       "text_length": 5234,
-      "pages": 3,
-      "extracted_at": "2024-01-15T10:30:00Z"
+      "pages": 3
     },
     {
       "filename": "invoice.png",
-      "type": "image/png",
-      "text_length": 1200,
-      "extracted_at": "2024-01-15T10:30:05Z"
+      "status": "success",
+      "text_length": 1200
     }
-  ]
+  ],
+  "message": "2 documents processed successfully"
 }
 ```
 
 **Supported Formats**:
 - PDF: `.pdf`
-- Images: `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`
+- Images: `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tiff`
 
 **Limits**:
-- Max file size: 50MB
+- Max file size: 50MB (configurable)
 - Max files per upload: 10
-- Max total session size: 500MB
+- Recommended: Keep total context under 100,000 characters for best performance
+
+**Rate Limit**: 10 requests/minute per IP
 
 **Errors**:
 - `400`: Invalid file format or too large
@@ -120,18 +145,26 @@ curl http://localhost:8000/api/v1/session/550e8400-e29b-41d4-a716-446655440000 \
 ```json
 {
   "session_id": "550e8400-e29b-41d4-a716-446655440000",
-  "created_at": "2024-01-15T10:30:00Z",
+  "created_at": "2026-01-16T10:30:00Z",
   "documents": [
     {
       "filename": "contract.pdf",
-      "type": "application/pdf",
-      "text_length": 5234
+      "text": "Full extracted text content here...",
+      "entities": [
+        {
+          "text": "John Smith",
+          "label": "PERSON",
+          "start": 0,
+          "end": 10
+        }
+      ]
     }
   ],
-  "total_text_length": 6434,
   "document_count": 2
 }
 ```
+
+**Rate Limit**: 30 requests/minute per IP
 
 **Errors**:
 - `401`: Missing/invalid token
@@ -154,22 +187,16 @@ curl -X DELETE http://localhost:8000/api/v1/session/550e8400-e29b-41d4-a716-4466
   -H "Authorization: Bearer $TOKEN"
 ```
 
-**Response** (204 No Content):
-```
-(empty)
-```
+**Response** (200 OK):
+```json
+{
+  "message": "Session
 
-**Errors**:
-- `401`: Missing/invalid token
-- `404`: Session not found
-
----
-
-## Question Answering (v1)
-
-### Ask Question (Single Best Answer)
+### Ask Question (Best Answer)
 
 **Endpoint**: `POST /api/v1/ask`
+
+**Description**: Returns the single best answer from all documents in a session, with optional NER entity highlighting.
 
 **Headers**:
 ```
@@ -182,9 +209,8 @@ Content-Type: application/json
 {
   "session_id": "550e8400-e29b-41d4-a716-446655440000",
   "question": "What is the total contract amount?",
-  "doc_id": null,
   "highlight_entities": true,
-  "max_context_length": 4000
+  "max_context_length": 2000
 }
 ```
 
@@ -195,12 +221,25 @@ Content-Type: application/json
   "answer": "$500,000 per year for all services",
   "confidence": 0.92,
   "source_doc": "contract.pdf",
+  "context": "The agreement specifies $500,000 per year for all services including...",
   "entities": [
     {
       "text": "$500,000",
       "label": "MONEY",
       "start": 0,
-      "end": 8,
+      "end": 8
+    }
+  ]
+}
+```
+
+**Parameters**:
+- `session_id` (required): UUID of session
+- `question` (required): Question string (max 1000 chars, default: no limit)
+- `highlight_entities` (optional): Enable NER entity highlighting (default: false)
+- `max_context_length` (optional): Max context chars to consider (default: 2000)
+
+**Rate Limit**: 30 requests/minute per IP
       "label_description": "Monetary amount"
     }
   ]
@@ -224,7 +263,7 @@ Content-Type: application/json
 
 ### Ask Question (All Documents)
 
-**Endpoint**: `POST /api/v1/ask-detailed`
+**Description**: Returns answers from **each document** in the session separately, allowing you to compare answers across documents.
 
 **Headers**:
 ```
@@ -238,7 +277,7 @@ Content-Type: application/json
   "session_id": "550e8400-e29b-41d4-a716-446655440000",
   "question": "What is the payment schedule?",
   "highlight_entities": true,
-  "max_context_length": 4000
+  "max_context_length": 2000
 }
 ```
 
@@ -248,95 +287,54 @@ Content-Type: application/json
   "question": "What is the payment schedule?",
   "answers": [
     {
-      "doc_id": "doc-1-uuid",
+      "document": "contract.pdf",
       "answer": "Payments: $250,000 at signing, $250,000 at completion",
       "confidence": 0.89,
+      "context": "Section 5: Payment Terms. Payments: $250,000 at signing...",
       "entities": [
         {
           "text": "$250,000",
           "label": "MONEY",
           "start": 0,
-          "end": 8,
-          "label_description": "Monetary amount"
+          "end": 8
         }
       ]
     },
     {
-      "doc_id": "doc-2-uuid",
+      "document": "invoice.png",
       "answer": "Monthly installments of $5,000 for 24 months",
       "confidence": 0.76,
-      "entities": []
+      "context": "Installment plan: Monthly installments of $5,000...",
+      "entities": [
+        {
+          "text": "$5,000",
+          "label": "MONEY",
+          "start": 26,
+          "end": 32
+        }
+      ]
     }
   ],
   "best_answer": {
-    "doc_id": "doc-1-uuid",
+    "document": "contract.pdf",
     "answer": "Payments: $250,000 at signing, $250,000 at completion",
-    "confidence": 0.89,
-    "entities": [
-      {
-        "text": "$250,000",
-        "label": "MONEY",
-        "start": 0,
-        "end": 8,
-        "label_description": "Monetary amount"
-      }
-    ]
+    "confidence": 0.89
   }
 }
 ```
 
 **Parameters**:
 - `session_id` (required): UUID of session
-- `question` (required): Question string (max 1000 chars)
-- `highlight_entities` (optional): Enable entity highlighting (default: true)
-- `max_context_length` (optional): Max context length in chars (default: 4000)
+- `question` (required): Question string (max 1000 chars, default: no limit)
+- `highlight_entities` (optional): Enable NER entity highlighting (default: false)
+- `max_context_length` (optional): Max context chars per document (default: 2000)
+
+**Rate Limit**: 30 requests/minute per IP
 
 **Errors**:
 - `400`: No documents in session
 - `401`: Missing/invalid token
-- `404`: Session not found
-- `429`: Rate limit exceeded
-```
-Authorization: Bearer <token>
-Content-Type: application/json
-```
-
-**Request**:
-```json
-{
-  "session_id": "550e8400-e29b-41d4-a716-446655440000",
-  "question": "What are the payment terms?"
-}
-```
-
-**Response** (200 OK):
-```json
-{
-  "question": "What are the payment terms?",
-  "answers": [
-    {
-      "document": "contract.pdf",
-      "answer": "Payment due within 30 days of invoice",
-      "confidence": 0.87,
-      "context": "Payment terms: Net 30. All invoices due..."
-    },
-    {
-      "document": "invoice.png",
-      "answer": "Due date: February 15, 2024",
-      "confidence": 0.79,
-      "context": "Invoice #2024-001. Due date: February 15..."
-    }
-  ],
-  "processing_time_ms": 512
-}
-```
-
-**Parameters**:
-- `session_id` (required): UUID of session
-- `question` (required): Question string (max 500 chars)
-
-**Errors**:
-- `400`: Session not found or invalid question
+- `404`: Session not foundd or invalid question
 - `401`: Missing/invalid token
 - `422`: Validation error
 - `429`: Rate limit exceeded
@@ -382,47 +380,172 @@ All endpoints return standardized error responses:
 
 ### 429 - Rate Limited
 ```json
-{
-  "detail": "Rate limit exceeded. Max 100 requests per 60 seconds",
-  "error_code": "RATE_LIMITED",
-  "retry_after_seconds": 30,
-  "timestamp": "2024-01-15T10:30:00Z"
-}
-```
+{Monitoring & Health
 
-### 500 - Server Error
+### Health Check
+
+**Endpoint**: `GET /health`
+
+**Description**: Basic health check. No authentication required.
+
+**Response** (200 OK):
 ```json
 {
-  "detail": "Internal server error",
-  "error_code": "INTERNAL_ERROR",
-  "request_id": "550e8400-e29b-41d4-a716-446655440000",
-  "timestamp": "2024-01-15T10:30:00Z"
+  "status": "healthy",
+  "timestamp": "2026-01-16T10:30:00Z"
 }
 ```
 
 ---
 
-## Rate Limiting
+### Prometheus Metrics
 
-**Per-endpoint limits** (all rates per IP address):
-- `POST /token`: 5 requests/minute
-- `POST /session`: 20 requests/minute
-- `POST /upload`: 10 requests/minute
-- `GET /session/{id}`: 30 requests/minute
-- `DELETE /session/{id}`: 20 requests/minute
-- `POST /ask`: 30 requests/minute
-- `POST /ask-detailed`: 30 requests/minute
+**Endpoint**: `GET /metrics`
 
-**Response Headers**:
+**Description**: Prometheus-format metrics for monitoring. No authentication required.
+
+**Response** (200 OK):
 ```
-X-RateLimit-Limit: 30
-X-RateLimit-Remaining: 29
-X-RateLimit-Reset: 1705319460
+# HELP http_requests_total Total HTTP requests
+# TYPE http_requests_total counter
+http_requests_total{method="POST",endpoint="/api/v1/ask"} 1523
+...
 ```
 
-**Rate Limited Response** (429):
+---
+
+### Get Sessions List
+
+**Endpoint**: `GET /api/v1/sessions/count`
+
+**Description**: List all active session IDs.
+
+**Headers**:
+```
+Authorization: Bearer <token>
+```
+
+**Response** (200 OK):
 ```json
-{
+{Named Entity Recognition
+
+NER is **integrated into QA endpoints** via the `highlight_entities` parameter. Supported entity types:
+
+| Entity Type | Description | Examples |
+|-------------|-------------|----------|
+| PERSON | People names | "John Smith", "Dr. Johnson" |
+| ORG | Organizations | "Microsoft", "City Council" |
+| GPE | Geopolitical entities | "United States", "California" |
+| DATE | Dates and times | "January 2026", "next Tuesday" |
+| MONEY | Monetary amounts | "$500,000", "€250" |
+| PERCENT | Percentages | "15%", "three percent" |
+| TIME | Times | "3:00 PM", "midnight" |
+| QUANTITY | Measurements | "500 kg", "10 miles" |
+
+**Usage**: Set `"highlight_entities": true` in `/ask` or `/ask-detailed` requests to receive entity annotations in responses.ndpoint | Rate Limit |
+|----------|-----------|
+| `POST /api/v1/token` | 5 requests/minute |
+| `POST /api/v1/session` | 20 requests/minute |
+| `POST /api/v1/upload` | 10 requests/minute |
+| `GET /api/v1/session/{id}` | 30 requests/minute |
+| `DELETE /api/v1/session/{id}` | 20 requests/minute |
+| `POST /api/v1/ask` | 30 requests/minute |
+| `POST /api/v1/ask-detailed` | 30 requests/minute |
+| `GET /api/v1/sessions/count` | 30 requests/minute |
+| `GET /api/v1/cache/stats` | 30 requests/minute |
+| `GET /api/v1/models/status` | 30 requests/minute |
+
+# Get token
+token_resp = requests.post('http://localhost:8000/api/v1/token')
+token = token_resp.json()['access_token']
+headers = {'Authorization': f'Bearer {token}'}
+
+# Upload documents
+files = [
+    ('files', open('contract.pdf', 'rb')),
+    ('files', open('invoice.png', 'rb'))
+]
+upload_resp = requests.post(
+    'http://localhost:8000/api/v1/upload',
+    files=files,
+    headers=headers
+)
+session_id = upload_resp.json()['session_id']
+print(f"Session: {session_id}")
+
+# Ask question with entity highlighting
+ask_resp = requests.post(
+    'http://localhost:8000/api/v1/ask',
+    json={
+        'session_id': session_id,
+        'question': 'What is the total contract amount?',
+        'highlight_entities': True
+    },
+    headers=headers
+)
+result = ask_resp.json()
+print(f"Answer: {result['answer']}")
+print(f"Confidence: {result['confidence']:.2%}")
+if result.get('entities'):
+    print(f"Entities: {result['entities']}")
+```
+
+### JavaScript/Node.js
+```javascript
+// Get token
+const tokenResp = await fetch('http://localhost:8000/api/v1/token', {
+  method: 'POST'
+});
+const {access_token} = await tokenResp.json();
+const headers = {Authorization: `Bearer ${access_token}`};
+
+// Upload documents
+const formData = new FormData();
+formData.append('files', fileInput.files[0]);
+const uploadResp = await fetch('http://localhost:8000/api/v1/upload', {
+  method: 'POST',
+  headers,
+  body: formData
+});
+const {session_id} = await uploadResp.json();
+
+// Ask question
+const askResp = await fetch('http://localhost:8000/api/v1/ask', {
+  method: 'POST',
+  headers: {...headers, 'Content-Type': 'application/json'},
+  body: JSON.stringify({
+    session_id,
+    question: 'What is the total amount?',
+    highlight_entities: true
+  })
+});
+const result = await askResp.json();
+console.log(`Answer: ${result.answer} (${result.confidence})`);
+```
+
+### cURL (Bash)
+```bash
+# Get token
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/token | jq -r '.access_token')
+
+# Upload documents
+UPLOAD_RESP=$(curl -s -X POST http://localhost:8000/api/v1/upload \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "files=@contract.pdf" \
+  -F "files=@invoice.png")
+SESSION_ID=$(echo $UPLOAD_RESP | jq -r '.session_id')
+
+echo "Session ID: $SESSION_ID"
+
+# Ask question
+curl -X POST http://localhost:8000/api/v1/ask \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"session_id\": \"$SESSION_ID\",
+    \"question\": \"What is the total?\",
+    \"highlight_entities\": true
+  }" | jq .
   "detail": "Rate limit exceeded"
 }
 ```
@@ -519,35 +642,35 @@ console.log(await askResp.json());
 ```bash
 # Token
 TOKEN=$(curl -s -X POST http://localhost:8000/api/v2/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"testuser","password":"secret"}' \
-  | jq -r '.access_token')
+  -API Changelog
 
-# Upload
-RESPONSE=$(curl -s -X POST http://localhost:8000/api/v1/upload \
-  -H "Authorization: Bearer $TOKEN" \
-  -F "files=@contract.pdf")
-SESSION_ID=$(echo $RESPONSE | jq -r '.session_id')
-
-# Ask
-curl -X POST http://localhost:8000/api/v1/ask \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"session_id\":\"$SESSION_ID\",\"question\":\"What is the total?\"}"
-```
+### v1.0 (Current - January 2026)
+- ✅ JWT authentication (`/api/v1/token`)
+- ✅ Session management (create, get, delete, list)
+- ✅ Document upload (PDF via PyMuPDF, Images via EasyOCR)
+- ✅ Question answering (DistilBERT transformer)
+- ✅ Named Entity Recognition (spaCy, 12+ entity types)
+- ✅ RAG semantic search (FAISS + Sentence-BERT embeddings)
+- ✅ Redis caching with in-memory fallback
+- ✅ Per-endpoint rate limiting (SlowAPI)
+- ✅ Prometheus metrics & monitoring
+- ✅ Structured JSON logging
+- ✅ Streamlit web UI
 
 ---
 
-## Changelog
+## Interactive Documentation
 
-### v2.0.0 (Current)
-- ✅ NER integration with spaCy
-- ✅ RAG with FAISS embeddings
-- ✅ Redis caching with fallback
-- ✅ JWT authentication
-- ✅ Rate limiting
-- ✅ Prometheus monitoring
-- ✅ Structured logging
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+- **GitHub README**: ../README.md
+- **Deployment Guide**: DEPLOYMENT_CHECKLIST.md
+
+---
+
+**Last Updated**: January 16, 2026  
+**API Version**: v1.0  
+**Status**: Production Ready (with known limitations - see README.md)
 
 ### v1.0.0
 - ✅ Document upload (PDF/Images)
