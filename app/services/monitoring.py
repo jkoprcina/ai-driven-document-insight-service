@@ -57,7 +57,9 @@ class LoggingManager:
         """
         # Create logs directory if needed
         import os
-        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        log_dir = os.path.dirname(log_file)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
         
         # Configure structlog
         structlog.configure(

@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
 import logging.config
+import os
+import sys
 
 from app.routers import documents, qa, token, monitoring
 from app.services.storage import SessionStorage
@@ -26,6 +28,9 @@ from app.middleware import (
 # Get settings
 settings = get_settings()
 
+# Ensure logs directory exists
+os.makedirs(os.path.dirname(settings.log_file) or "logs", exist_ok=True)
+
 # Validate SECRET_KEY for production
 if settings.debug is False and settings.secret_key == "dev-secret-key-change-in-production":
     raise ValueError("CRITICAL: SECRET_KEY environment variable must be set for production")
@@ -37,23 +42,34 @@ LoggingManager.configure_logging(
 )
 logger = LoggingManager.get_logger(__name__)
 
+logger.info("Starting application initialization...")
+
 # Initialize FastAPI app
-app = FastAPI(
-    title=settings.api_title,
-    description=settings.api_description,
-    version=settings.api_version,
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json"
-)
+try:
+    app = FastAPI(
+        title=settings.api_title,
+        description=settings.api_description,
+        version=settings.api_version,
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
+        openapi_url="/api/openapi.json"
+    )
+except Exception as e:
+    logger.error(f"Failed to initialize FastAPI app: {e}", exc_info=True)
+    sys.exit(1)
 
 # Add state
-app.state.session_storage = SessionStorage()
-app.state.security_manager = SecurityManager(secret_key=settings.secret_key)
+try:
+    app.state.session_storage = SessionStorage()
+    app.state.security_manager = SecurityManager(secret_key=settings.secret_key)
+except Exception as e:
+    logger.error(f"Failed to initialize core services: {e}", exc_info=True)
+    sys.exit(1)
 
 # NER is optional - skip if model not available
 try:
     app.state.ner = EntityRecognizer(model=settings.ner_model)
+    logger.info("NER service initialized successfully")
 except Exception as e:
     logger.warning(f"NER service unavailable: {e}. Continuing without NER.")
     app.state.ner = None
@@ -61,6 +77,7 @@ except Exception as e:
 # RAG is optional - skip if model not available
 try:
     app.state.rag = RAGEngine(model_name=settings.embedding_model)
+    logger.info("RAG service initialized successfully")
 except Exception as e:
     logger.warning(f"RAG service unavailable: {e}. Continuing without RAG.")
     app.state.rag = None
@@ -68,13 +85,16 @@ except Exception as e:
 # Cache manager - can run without Redis
 try:
     app.state.cache = CacheManager(redis_url=settings.redis_url, ttl=settings.redis_ttl)
+    logger.info("Cache manager initialized successfully")
     # Pass cache manager to RAG engine if RAG is available
     if app.state.rag:
         app.state.rag.cache_manager = app.state.cache
 except Exception as e:
     logger.warning(f"Cache service unavailable: {e}. Continuing without caching.")
     app.state.cache = None
+
 app.state.settings = settings
+logger.info("Application initialization completed successfully")
 
 # Add middleware
 app.add_middleware(SecurityHeadersMiddleware)
