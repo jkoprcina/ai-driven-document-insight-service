@@ -26,9 +26,9 @@ from app.middleware import (
 # Get settings
 settings = get_settings()
 
-# Validate SECRET_KEY is set and not default
-if not settings.secret_key:
-    raise ValueError("CRITICAL: SECRET_KEY environment variable must be set")
+# Validate SECRET_KEY for production
+if settings.debug is False and settings.secret_key == "dev-secret-key-change-in-production":
+    raise ValueError("CRITICAL: SECRET_KEY environment variable must be set for production")
 
 # Configure logging
 LoggingManager.configure_logging(
