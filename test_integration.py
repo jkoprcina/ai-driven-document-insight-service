@@ -32,7 +32,7 @@ def test_root():
 def test_upload_pdf():
     """Test PDF upload."""
     print("\n=== Testing PDF Upload ===")
-    pdf_path = "test_docs/sample_contract.pdf"
+    pdf_path = "test_docs/JosipKoprcinaResume.pdf"
     
     if not Path(pdf_path).exists():
         print(f"⚠ Test document not found: {pdf_path}")
@@ -54,9 +54,9 @@ def test_upload_pdf():
     return data["session_id"]
 
 def test_upload_image(session_id):
-    """Test image upload to existing session."""
-    print("\n=== Testing Image Upload ===")
-    img_path = "test_docs/sample_invoice.png"
+    """Test PDF upload to existing session."""
+    print("\n=== Testing Additional PDF Upload ===")
+    img_path = "test_docs/roman_history.pdf"
     
     if not Path(img_path).exists():
         print(f"⚠ Test document not found: {img_path}")
@@ -98,7 +98,7 @@ def test_ask_question(session_id):
     """Test asking a question."""
     print("\n=== Testing Question Answering ===")
     
-    question = "What is the contract amount?"
+    question = "What is the main topic discussed?"
     payload = {
         "session_id": session_id,
         "question": question
@@ -122,7 +122,7 @@ def test_ask_detailed(session_id):
     """Test detailed question answering."""
     print("\n=== Testing Detailed Question Answering ===")
     
-    question = "What are the payment terms?"
+    question = "What information is provided?"
     payload = {
         "session_id": session_id,
         "question": question

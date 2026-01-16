@@ -62,62 +62,28 @@ def render_chat_tab():
         })
         
         with st.spinner("Analyzing documents..."):
-            result = ask_question(st.session_state.session_id, question)
+            # Request detailed answers from all documents
+            result = ask_question(st.session_state.session_id, question, detailed=True)
             
             if result:
-                # Basic answer
-                st.session_state.chat_history.append({
-                    "role": "assistant",
-                    "content": result['answer'],
-                    "confidence": result['confidence'],
-                    "source_doc": result['source_doc'],
-                    "entities": result.get('entities')
-                })
-                st.rerun()
-    
-    # Detailed analysis button
-    if st.session_state.chat_history:
-        st.divider()
-        
-        with st.expander("📊 View Detailed Analysis"):
-            if st.button("Get answers from all documents", use_container_width=True):
-                # Get the last user question from chat history
-                last_question = None
-                for msg in reversed(st.session_state.chat_history):
-                    if msg['role'] == 'user':
-                        last_question = msg['content']
-                        break
+                answers = result.get('answers', [])
                 
-                if last_question:
-                    with st.spinner("Retrieving detailed answers..."):
-                        detailed = ask_question(
-                            st.session_state.session_id,
-                            last_question,
-                            detailed=True
-                        )
-                        
-                        if detailed:
-                            st.subheader("Answers from All Documents")
-                            
-                            for i, answer in enumerate(detailed.get('answers', []), 1):
-                                col1, col2 = st.columns([0.8, 0.2])
-                                
-                                with col1:
-                                    source = answer.get('doc_id', 'Unknown source')
-                                    st.markdown(
-                                        f"### [{i}] {source}"
-                                    )
-                                    st.write(answer.get('answer', 'No answer'))
-                                    
-                                    # Display entities if available
-                                    if answer.get('entities'):
-                                        display_entities(answer.get('entities'))
-                                
-                                with col2:
-                                    confidence = answer.get('confidence', 0.0)
-                                    color_class = get_confidence_color(confidence)
-                                    st.markdown(
-                                        f"<div class='confidence-badge {color_class}'>"
-                                        f"{confidence:.0%}</div>",
-                                        unsafe_allow_html=True
-                                    )
+                if answers:
+                    # Keep only the highest-confidence answer
+                    best = max(answers, key=lambda a: a.get('confidence', 0.0))
+                    st.session_state.chat_history.append({
+                        "role": "assistant",
+                        "content": best.get('answer', 'No answer'),
+                        "confidence": best.get('confidence', 0.0),
+                        "source_doc": best.get('doc_id', 'Unknown source'),
+                        "entities": best.get('entities')
+                    })
+                else:
+                    st.session_state.chat_history.append({
+                        "role": "assistant",
+                        "content": "No relevant information found in the documents.",
+                        "confidence": 0.0,
+                        "source_doc": "None",
+                        "entities": None
+                    })
+                st.rerun()

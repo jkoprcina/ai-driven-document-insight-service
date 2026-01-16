@@ -52,7 +52,9 @@ class SessionStorage:
             "filename": filename,
             "text": text,
             "added_at": datetime.now(),
-            "size": len(text)
+            "size": len(text),
+            "ner_status": "pending",  # pending, processing, completed, failed
+            "entities": None
         }
         logger.info(f"Added document {doc_id} to session {session_id}")
         return True
@@ -113,3 +115,56 @@ class SessionStorage:
             logger.info(f"Cleared session: {session_id}")
             return True
         return False
+    
+    def set_ner_status(self, session_id: str, doc_id: str, status: str) -> bool:
+        """
+        Set NER processing status for a document.
+        
+        Args:
+            session_id: Session ID
+            doc_id: Document ID
+            status: Status value (pending, processing, completed, failed)
+            
+        Returns:
+            Success status
+        """
+        docs = self.get_documents(session_id)
+        if not docs or doc_id not in docs:
+            return False
+        self.sessions[session_id]["documents"][doc_id]["ner_status"] = status
+        return True
+    
+    def set_entities(self, session_id: str, doc_id: str, entities: dict) -> bool:
+        """
+        Store extracted entities for a document.
+        
+        Args:
+            session_id: Session ID
+            doc_id: Document ID
+            entities: Dictionary of entities
+            
+        Returns:
+            Success status
+        """
+        docs = self.get_documents(session_id)
+        if not docs or doc_id not in docs:
+            return False
+        self.sessions[session_id]["documents"][doc_id]["entities"] = entities
+        self.sessions[session_id]["documents"][doc_id]["ner_status"] = "completed"
+        return True
+    
+    def get_ner_status(self, session_id: str, doc_id: str) -> Optional[str]:
+        """
+        Get NER processing status for a document.
+        
+        Args:
+            session_id: Session ID
+            doc_id: Document ID
+            
+        Returns:
+            Status value or None
+        """
+        docs = self.get_documents(session_id)
+        if not docs or doc_id not in docs:
+            return None
+        return docs[doc_id].get("ner_status", "pending")

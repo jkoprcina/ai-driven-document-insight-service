@@ -2,7 +2,7 @@
 Document upload and management routes.
 Handles POST /upload for document ingestion.
 """
-from fastapi import APIRouter, UploadFile, File, Request, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, Request, HTTPException, Depends, BackgroundTasks
 from typing import List
 import uuid
 import logging
@@ -10,12 +10,72 @@ import os
 import tempfile
 from app.services.extractor import TextExtractor
 from app.dependencies import verify_token
+import asyncio
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Initialize extractor
 extractor = TextExtractor()
+
+
+async def process_ner_background(session_id: str, doc_id: str, text: str, session_storage, ner_service):
+    """
+    Process NER extraction in background.
+    
+    Args:
+        session_id: Session ID
+        doc_id: Document ID
+        text: Document text
+        session_storage: Session storage instance
+        ner_service: NER service instance
+    """
+    try:
+        logger.info(f"[NER-{doc_id[:8]}] Starting NER processing (text length: {len(text)} chars)")
+        session_storage.set_ner_status(session_id, doc_id, "processing")
+        
+        if not text or len(text) == 0:
+            logger.warning(f"[NER-{doc_id[:8]}] Document has no text, skipping NER")
+            session_storage.set_ner_status(session_id, doc_id, "completed")
+            return
+        
+        # Process in chunks for large documents
+        chunk_size = 50000
+        all_entities = []
+        
+        if len(text) > chunk_size:
+            logger.info(f"[NER-{doc_id[:8]}] Processing in chunks (total: {len(text)} chars, chunk size: {chunk_size})")
+            chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+            
+            for idx, chunk in enumerate(chunks):
+                logger.info(f"[NER-{doc_id[:8]}] Processing chunk {idx+1}/{len(chunks)} (size: {len(chunk)} chars)")
+                chunk_result = ner_service.highlight_entities(chunk, format_type="dict")
+                chunk_entities = chunk_result.get('entities', [])
+                
+                # Adjust entity positions for the chunk offset
+                offset = idx * chunk_size
+                for ent in chunk_entities:
+                    ent['start'] += offset
+                    ent['end'] += offset
+                
+                all_entities.extend(chunk_entities)
+                logger.info(f"[NER-{doc_id[:8]}] Chunk {idx+1} found {len(chunk_entities)} entities (total so far: {len(all_entities)})")
+            
+            entities = {
+                "text": text,
+                "entities": all_entities
+            }
+        else:
+            logger.info(f"[NER-{doc_id[:8]}] Processing full text in single pass")
+            entities = ner_service.highlight_entities(text, format_type="dict")
+        
+        logger.info(f"[NER-{doc_id[:8]}] NER processing complete, found {len(entities.get('entities', []))} total entities")
+        
+        session_storage.set_entities(session_id, doc_id, entities)
+        logger.info(f"[NER-{doc_id[:8]}] COMPLETED - NER entities saved to storage")
+    except Exception as e:
+        logger.error(f"[NER-{doc_id[:8]}] ERROR: {type(e).__name__}: {str(e)}", exc_info=True)
+        session_storage.set_ner_status(session_id, doc_id, "failed")
 
 @router.post("/session")
 async def create_session(request: Request, token: dict = Depends(verify_token)):
@@ -41,7 +101,8 @@ async def upload_documents(
     request: Request,
     files: List[UploadFile] = File(...),
     session_id: str = None,
-    token: dict = Depends(verify_token)
+    token: dict = Depends(verify_token),
+    background_tasks: BackgroundTasks = None
 ):
     """
     Upload one or more documents (PDF or image).
@@ -50,11 +111,13 @@ async def upload_documents(
         request: FastAPI request object
         files: List of uploaded files
         session_id: Optional session ID. If not provided, creates new session.
+        background_tasks: FastAPI background tasks
         
     Returns:
         Dictionary with session_id and uploaded documents info
     """
     session_storage = request.app.state.session_storage
+    ner_service = request.app.state.ner if hasattr(request.app.state, 'ner') else None
     
     # Create session if not provided
     if not session_id:
@@ -96,6 +159,21 @@ async def upload_documents(
                     filename=file.filename,
                     text=text
                 )
+                
+                # Schedule NER processing in background
+                if ner_service:
+                    if background_tasks:
+                        background_tasks.add_task(
+                            process_ner_background,
+                            session_id,
+                            doc_id,
+                            text,
+                            session_storage,
+                            ner_service
+                        )
+                        logger.info(f"Scheduled background NER task for document {doc_id}")
+                    else:
+                        logger.warning(f"BackgroundTasks not available, skipping NER for document {doc_id}")
                 
                 uploaded_docs.append({
                     "doc_id": doc_id,
@@ -186,7 +264,9 @@ async def get_session_info(request: Request, session_id: str, token: dict = Depe
                 "filename": doc["filename"],
                 "text": doc["text"],
                 "text_length": doc["size"],
-                "added_at": doc["added_at"].isoformat()
+                "added_at": doc["added_at"].isoformat(),
+                "ner_status": doc.get("ner_status", "pending"),
+                "entities": doc.get("entities")
             }
             for doc_id, doc in (docs.items() if docs else [])
         ]

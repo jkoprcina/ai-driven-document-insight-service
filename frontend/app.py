@@ -12,6 +12,7 @@ from components import (
 from utils.auth import initialize_session_state
 from config import PAGE_CONFIG
 from styles import CUSTOM_CSS
+import time
 
 # Configure page
 st.set_page_config(**PAGE_CONFIG)
@@ -21,6 +22,21 @@ st.markdown(f"<style>{CUSTOM_CSS}</style>", unsafe_allow_html=True)
 
 # Initialize session state
 initialize_session_state()
+
+# Auto-refresh for NER status checking - disabled by default, only when processing
+if 'last_refresh' not in st.session_state:
+    st.session_state.last_refresh = time.time()
+if 'last_checked_ner' not in st.session_state:
+    st.session_state.last_checked_ner = False
+
+# Only auto-refresh if explicitly enabled AND a reasonable time has passed
+# This prevents constant refreshing that slows down the app
+current_time = time.time()
+if st.session_state.last_checked_ner and current_time - st.session_state.last_refresh > 5:
+    st.session_state.last_refresh = current_time
+    # Disable auto-refresh after a while to prevent endless refreshing
+    st.session_state.last_checked_ner = False
+    st.rerun()
 
 # Main app layout
 st.title("📄 Document QA System")

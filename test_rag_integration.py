@@ -34,7 +34,7 @@ def test_rag_integration():
     
     # Upload documents
     print("\n[3] Uploading test documents...")
-    test_files = ["test_docs/sample_contract.pdf", "test_docs/sample_invoice.png"]
+    test_files = ["test_docs/JosipKoprcinaResume.pdf", "test_docs/roman_history.pdf"]
     
     files_list = []
     for test_file in test_files:
