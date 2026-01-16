@@ -16,7 +16,7 @@ import asyncio
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Initialize extractor
+# Initialize extractor (safe: OCR loads lazily)
 extractor = TextExtractor()
 
 
@@ -150,7 +150,17 @@ async def upload_documents(
                     tmp.flush()
                 
                 # Extract text (file is now closed)
-                text = extractor.extract(tmp_path)
+                try:
+                    text = extractor.extract(tmp_path)
+                except Exception as e:
+                    # If OCR unavailable and image provided, return a clear error
+                    logger.error(f"Extraction failed for {file.filename}: {e}")
+                    uploaded_docs.append({
+                        "filename": file.filename,
+                        "status": "error",
+                        "error": f"Extraction failed: {str(e)}"
+                    })
+                    continue
                 
                 # Generate document ID
                 doc_id = str(uuid.uuid4())

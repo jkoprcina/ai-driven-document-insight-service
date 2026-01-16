@@ -4,7 +4,6 @@ Supports PyMuPDF for PDFs and EasyOCR for images.
 """
 import os
 import fitz
-import easyocr
 from pathlib import Path
 from typing import Tuple
 import logging
@@ -48,8 +47,27 @@ class TextExtractor:
     """Extract text from PDFs and images."""
     
     def __init__(self):
-        """Initialize text extractors."""
-        self.reader = easyocr.Reader(['en'], gpu=False)
+        """Initialize text extractors lazily to avoid startup crashes."""
+        self.reader = None
+        self.ocr_available = None  # Unknown until first use
+
+    def _ensure_reader(self):
+        """Lazily initialize EasyOCR reader when needed."""
+        if self.reader is not None:
+            return
+        if self.ocr_available is False:
+            # Previously detected as unavailable
+            raise RuntimeError("OCR service unavailable")
+        try:
+            # Import easyocr only when needed to avoid heavy startup
+            import easyocr  # noqa: WPS433
+            self.reader = easyocr.Reader(['en'], gpu=False)
+            self.ocr_available = True
+            logger.info("EasyOCR reader initialized successfully (CPU mode)")
+        except Exception as e:
+            self.ocr_available = False
+            logger.warning(f"EasyOCR initialization failed: {e}. OCR will be unavailable.")
+            raise
     
     def extract_from_pdf(self, pdf_path: str) -> str:
         """
@@ -84,6 +102,7 @@ class TextExtractor:
             Extracted text
         """
         try:
+            self._ensure_reader()
             results = self.reader.readtext(image_path)
             text = "\n".join([item[1] for item in results])
             return text

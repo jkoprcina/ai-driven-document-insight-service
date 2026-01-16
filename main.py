@@ -14,9 +14,6 @@ from app.routers import documents, qa, token, monitoring
 from app.services.storage import SessionStorage
 from app.services.security import SecurityManager
 from app.services.monitoring import LoggingManager
-from app.services.ner import EntityRecognizer
-from app.services.rag import RAGEngine
-from app.services.cache import CacheManager
 from app.config import get_settings
 from app.middleware import (
     SecurityHeadersMiddleware,
@@ -66,16 +63,18 @@ except Exception as e:
     logger.error(f"Failed to initialize core services: {e}", exc_info=True)
     sys.exit(1)
 
-# NER is optional - skip if model not available
+# NER is optional - import and init lazily with error handling
 try:
+    from app.services.ner import EntityRecognizer  # noqa: WPS433
     app.state.ner = EntityRecognizer(model=settings.ner_model)
     logger.info("NER service initialized successfully")
 except Exception as e:
     logger.warning(f"NER service unavailable: {e}. Continuing without NER.")
     app.state.ner = None
 
-# RAG is optional - skip if model not available
+# RAG is optional - import and init lazily with error handling
 try:
+    from app.services.rag import RAGEngine  # noqa: WPS433
     app.state.rag = RAGEngine(model_name=settings.embedding_model)
     logger.info("RAG service initialized successfully")
 except Exception as e:
@@ -84,6 +83,7 @@ except Exception as e:
 
 # Cache manager - can run without Redis
 try:
+    from app.services.cache import CacheManager  # noqa: WPS433
     app.state.cache = CacheManager(redis_url=settings.redis_url, ttl=settings.redis_ttl)
     logger.info("Cache manager initialized successfully")
     # Pass cache manager to RAG engine if RAG is available

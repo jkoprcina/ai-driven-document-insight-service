@@ -102,15 +102,19 @@ jobs:
     
     - name: Test Docker image
       run: |
-        docker run --rm -d -p 8000:8000 --name test-api doc-qa-api:latest
-        sleep 15
+        SECRET_KEY="${{ secrets.SECRET_KEY }}"
+        if [ -z "$SECRET_KEY" ]; then SECRET_KEY="ci-test-key"; fi
+        docker run -d -p 8000:8000 --name test-api -e SECRET_KEY="$SECRET_KEY" doc-qa-api:latest
+        sleep 35
         if ! curl -f http://localhost:8000/health; then
           echo "Health check failed. Container logs:"
-          docker logs test-api
+          docker logs test-api || true
           docker stop test-api || true
+          docker rm -f test-api || true
           exit 1
         fi
         docker stop test-api
+        docker rm -f test-api || true
 
   deploy:
     needs: build
