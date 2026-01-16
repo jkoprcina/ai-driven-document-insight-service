@@ -103,7 +103,7 @@ jobs:
     - name: Test Docker image
       run: |
         docker run --rm -d -p 8000:8000 --name test-api doc-qa-api:latest
-        sleep 10
+        sleep 15
         if ! curl -f http://localhost:8000/health; then
           echo "Health check failed. Container logs:"
           docker logs test-api
