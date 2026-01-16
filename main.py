@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
 import logging.config
 
-from app.routers import documents, qa, token
+from app.routers import documents, qa, token, monitoring
 from app.services.storage import SessionStorage
 from app.services.security import SecurityManager
 from app.services.monitoring import LoggingManager
@@ -99,6 +99,7 @@ app.mount("/metrics", metrics_app)
 app.include_router(token.router, prefix="/api/v1", tags=["Token"])
 app.include_router(documents.router, prefix="/api/v1", tags=["Documents"])
 app.include_router(qa.router, prefix="/api/v1", tags=["QA"])
+app.include_router(monitoring.router, prefix="/api/v1", tags=["Monitoring"]) 
 
 @app.get("/health")
 async def health_check():

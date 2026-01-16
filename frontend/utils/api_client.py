@@ -143,30 +143,23 @@ def delete_session(session_id: str):
         return False
 
 
-def extract_entities(text: str):
+def get_sessions_list():
     """
-    Extract named entities from text
-    
-    Args:
-        text: Text to extract entities from
+    Get list of active session IDs from the API
     
     Returns:
-        List of entities or empty list on error
+        List[str]: session IDs or empty list on error
     """
     try:
-        response = requests.post(
-            f"{API_V1}/extract-entities",
-            json={"text": text},
+        resp = requests.get(
+            f"{API_V1}/sessions/count",
             headers=get_headers(),
-            timeout=API_QUESTION_TIMEOUT
+            timeout=API_SESSION_TIMEOUT
         )
-        
-        if response.status_code == 200:
-            response_data = response.json()
-            return response_data.get('entities', [])
-        else:
-            st.warning(f"Entity extraction failed: {response.text}")
-            return []
-    except Exception as e:
-        st.warning(f"Error extracting entities: {str(e)}")
+        if resp.status_code == 200:
+            data = resp.json()
+            return data.get("sessions", []) or []
         return []
+    except Exception:
+        return []
+

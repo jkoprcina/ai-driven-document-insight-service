@@ -8,7 +8,7 @@ from utils.api_client import (
     ask_question,
     get_session_info,
     delete_session,
-    extract_entities
+    get_sessions_list
 )
 from utils.formatters import (
     get_confidence_color,
@@ -25,7 +25,7 @@ __all__ = [
     'ask_question',
     'get_session_info',
     'delete_session',
-    'extract_entities',
+    'get_sessions_list',
     'get_confidence_color',
     'display_entities',
     'highlight_entities_in_text',

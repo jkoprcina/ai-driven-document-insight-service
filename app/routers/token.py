@@ -5,6 +5,7 @@ Provides simple token generation without authentication.
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 import logging
+from app.middleware import limiter
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -16,6 +17,7 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+@limiter.limit("5/minute")
 @router.post("/token", response_model=TokenResponse)
 async def get_token(request: Request):
     """

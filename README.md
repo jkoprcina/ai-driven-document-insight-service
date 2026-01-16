@@ -269,3 +269,23 @@ For production use, see [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) for:
 - [ ] Web UI analytics dashboard
 - [ ] Custom model fine-tuning
 - [ ] Real-time document updates
+
+## ⚠️ Known Issues (Testing Version)
+
+This is a **development/testing version**. The following are known limitations:
+
+1. **JWT Tokens Don't Identify Users**: `/token` endpoint returns valid tokens without authentication. Tokens don't represent "who" you are, making per-user rate limiting impossible. Implement proper user authentication with database lookup for production.
+
+2. **In-Memory Session Storage**: All sessions and documents are lost on server restart. No data persistence. For production, implement PostgreSQL or MongoDB backend in [SessionStorage](app/services/storage.py).
+
+3. **No User Database**: No actual user accounts or authentication. Token generation is open to anyone. Add user table with password hashing for real multi-user support.
+
+4. **Insecure Default Secret Key**: Uses hardcoded `secret_key` if not set via environment. Update `SECRET_KEY` env variable before production use.
+
+5. **Redis Not Required**: Falls back to in-memory cache if Redis unavailable. In-memory cache is lost on restart and not shared across multiple server instances. Requires Redis for production scaling.
+
+6. **Prometheus Metrics Exposed**: Metrics endpoint at `/metrics` has no authentication. Restrict access in production with reverse proxy (nginx).
+
+7. **CORS Open to All Origins**: `allow_origins=["*"]` permits requests from any domain. Restrict to specific origins in production.
+
+8. **Rate Limiting by IP Only**: Can't distinguish users behind same IP/NAT. Add user-based rate limiting once authentication is implemented.

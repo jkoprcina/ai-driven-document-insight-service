@@ -2,7 +2,7 @@
 Documents tab component for viewing extracted text with NER highlighting.
 """
 import streamlit as st
-from utils import get_session_info, extract_entities, display_entities
+from utils import get_session_info, display_entities
 from utils.formatters import highlight_entities_in_text
 import time
 

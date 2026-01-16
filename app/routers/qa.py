@@ -8,6 +8,7 @@ from typing import Optional, List, Dict, Any
 import logging
 from app.services.qa import QAEngine
 from app.dependencies import verify_token
+from app.middleware import limiter
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -46,6 +47,7 @@ class AnswerResponse(BaseModel):
     source_doc: str = None
     entities: Optional[List[Entity]] = None  # Highlighted entities in answer
 
+@limiter.limit("30/minute")
 @router.post("/ask", response_model=AnswerResponse)
 async def ask_question(request: Request, query: QuestionRequest, token: dict = Depends(verify_token)):
     """
@@ -134,6 +136,7 @@ async def ask_question(request: Request, query: QuestionRequest, token: dict = D
     
     return AnswerResponse(**response_data)
 
+@limiter.limit("30/minute")
 @router.post("/ask-detailed")
 async def ask_question_detailed(request: Request, query: QuestionRequest, token: dict = Depends(verify_token)):
     """
@@ -231,49 +234,3 @@ async def ask_question_detailed(request: Request, query: QuestionRequest, token:
         logger.warning(f"Error caching detailed QA result: {e}")
     
     return response_data
-class ExtractEntitiesRequest(BaseModel):
-    """Request model for entity extraction endpoint."""
-    text: str
-
-class ExtractEntitiesResponse(BaseModel):
-    """Response model for entity extraction endpoint."""
-    entities: List[Entity]
-    text: str
-
-@router.post("/extract-entities", response_model=ExtractEntitiesResponse)
-async def extract_entities(request: Request, query: ExtractEntitiesRequest, token: dict = Depends(verify_token)):
-    """
-    Extract named entities from text using NER.
-    
-    Args:
-        request: FastAPI request object
-        query: ExtractEntitiesRequest with text to extract entities from
-        
-    Returns:
-        ExtractEntitiesResponse with entities and original text
-    """
-    if not request.app.state.ner:
-        raise HTTPException(status_code=503, detail="NER service not available")
-    
-    try:
-        logger.info(f"Extracting entities from text of length {len(query.text)}")
-        ner_result = request.app.state.ner.highlight_entities(
-            query.text,
-            format_type="dict"
-        )
-        entities = [
-            Entity(
-                text=ent["text"],
-                label=ent["label"],
-                start=ent["start"],
-                end=ent["end"],
-                label_description=ent.get("label_description")
-            )
-            for ent in ner_result.get("entities", [])
-        ]
-        logger.info(f"Found {len(entities)} entities in text")
-    except Exception as e:
-        logger.error(f"Error extracting entities: {e}")
-        raise HTTPException(status_code=500, detail=f"Error extracting entities: {str(e)}")
-    
-    return ExtractEntitiesResponse(entities=entities, text=query.text)

@@ -13,6 +13,10 @@ def render_chat_tab():
         st.info("👈 Upload documents in the Upload tab first")
         return
     
+    # Ensure per-session chat histories mapping exists
+    if 'session_histories' not in st.session_state:
+        st.session_state.session_histories = {}
+
     # Display chat history
     st.subheader("Chat History")
     
@@ -86,4 +90,6 @@ def render_chat_tab():
                         "source_doc": "None",
                         "entities": None
                     })
+                # Persist chat history for this session
+                st.session_state.session_histories[st.session_state.session_id] = st.session_state.chat_history
                 st.rerun()

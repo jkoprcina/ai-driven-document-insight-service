@@ -83,7 +83,10 @@ def render_upload_tab():
         
         for i, doc in enumerate(st.session_state.documents):
             with st.expander(f"📄 {doc['filename']}", expanded=(i==0)):
-                if doc.get('status') == 'success':
+                # Two shapes are possible:
+                # - Upload response documents include 'status'
+                # - Session info documents omit 'status' (already stored documents)
+                if doc.get('status') == 'success' or 'status' not in doc:
                     st.caption(f"✅ Successfully extracted")
                     st.caption(f"Text length: {doc.get('text_length', 0)} characters")
                     

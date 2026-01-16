@@ -182,8 +182,9 @@ Content-Type: application/json
 {
   "session_id": "550e8400-e29b-41d4-a716-446655440000",
   "question": "What is the total contract amount?",
-  "top_k": 1,
-  "confidence_threshold": 0.5
+  "doc_id": null,
+  "highlight_entities": true,
+  "max_context_length": 4000
 }
 ```
 
@@ -191,24 +192,32 @@ Content-Type: application/json
 ```json
 {
   "question": "What is the total contract amount?",
-  "answer": "$500,000 per year",
+  "answer": "$500,000 per year for all services",
   "confidence": 0.92,
-  "document": "contract.pdf",
-  "context": "The contract is valued at $500,000 per year and covers all services...",
-  "processing_time_ms": 245
+  "source_doc": "contract.pdf",
+  "entities": [
+    {
+      "text": "$500,000",
+      "label": "MONEY",
+      "start": 0,
+      "end": 8,
+      "label_description": "Monetary amount"
+    }
+  ]
 }
 ```
 
 **Parameters**:
 - `session_id` (required): UUID of session
-- `question` (required): Question string (max 500 chars)
-- `top_k` (optional): Number of answers to consider (default: 1)
-- `confidence_threshold` (optional): Min confidence (0-1, default: 0.5)
+- `question` (required): Question string (max 1000 chars)
+- `doc_id` (optional): Specific document UUID (if null, searches all documents)
+- `highlight_entities` (optional): Enable entity highlighting (default: true)
+- `max_context_length` (optional): Max context length in chars (default: 4000)
 
 **Errors**:
-- `400`: Session not found or invalid question
+- `400`: Session not found or no documents in session
 - `401`: Missing/invalid token
-- `422`: Validation error
+- `404`: Session not found
 - `429`: Rate limit exceeded
 
 ---
@@ -218,6 +227,75 @@ Content-Type: application/json
 **Endpoint**: `POST /api/v1/ask-detailed`
 
 **Headers**:
+```
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Request**:
+```json
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "question": "What is the payment schedule?",
+  "highlight_entities": true,
+  "max_context_length": 4000
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "question": "What is the payment schedule?",
+  "answers": [
+    {
+      "doc_id": "doc-1-uuid",
+      "answer": "Payments: $250,000 at signing, $250,000 at completion",
+      "confidence": 0.89,
+      "entities": [
+        {
+          "text": "$250,000",
+          "label": "MONEY",
+          "start": 0,
+          "end": 8,
+          "label_description": "Monetary amount"
+        }
+      ]
+    },
+    {
+      "doc_id": "doc-2-uuid",
+      "answer": "Monthly installments of $5,000 for 24 months",
+      "confidence": 0.76,
+      "entities": []
+    }
+  ],
+  "best_answer": {
+    "doc_id": "doc-1-uuid",
+    "answer": "Payments: $250,000 at signing, $250,000 at completion",
+    "confidence": 0.89,
+    "entities": [
+      {
+        "text": "$250,000",
+        "label": "MONEY",
+        "start": 0,
+        "end": 8,
+        "label_description": "Monetary amount"
+      }
+    ]
+  }
+}
+```
+
+**Parameters**:
+- `session_id` (required): UUID of session
+- `question` (required): Question string (max 1000 chars)
+- `highlight_entities` (optional): Enable entity highlighting (default: true)
+- `max_context_length` (optional): Max context length in chars (default: 4000)
+
+**Errors**:
+- `400`: No documents in session
+- `401`: Missing/invalid token
+- `404`: Session not found
+- `429`: Rate limit exceeded
 ```
 Authorization: Bearer <token>
 Content-Type: application/json
@@ -267,288 +345,7 @@ Content-Type: application/json
 
 ## Advanced Features (v2)
 
-### NER - Named Entity Recognition
-
-**Endpoint**: `POST /api/v2/extract-entities`
-
-**Headers**:
-```
-Authorization: Bearer <token>
-Content-Type: application/json
-```
-
-**Request**:
-```json
-{
-  "session_id": "550e8400-e29b-41d4-a716-446655440000",
-  "output_format": "dict"
-}
-```
-
-**Response** (200 OK) - Format: `dict`:
-```json
-{
-  "entities": {
-    "PERSON": ["John Smith", "Jane Doe"],
-    "ORG": ["Acme Corp", "Tech Industries"],
-    "GPE": ["New York", "California"],
-    "DATE": ["January 15, 2024"],
-    "MONEY": ["$500,000", "$1.2M"]
-  },
-  "document_count": 2,
-  "total_entities": 15
-}
-```
-
-**Response** - Format: `html`:
-```json
-{
-  "html": "<p>Contract with <span class=\"entity person\">John Smith</span> for <span class=\"entity money\">$500,000</span>...</p>",
-  "document_count": 2
-}
-```
-
-**Response** - Format: `markdown`:
-```json
-{
-  "markdown": "Contract with **PERSON[John Smith]** for **MONEY[$500,000]**...",
-  "document_count": 2
-}
-```
-
-**Parameters**:
-- `session_id` (required): UUID of session
-- `output_format` (optional): `dict`, `html`, or `markdown` (default: `dict`)
-
-**Entity Types**:
-- `PERSON`: People names
-- `ORG`: Organizations
-- `GPE`: Geopolitical entities
-- `LOC`: Locations
-- `DATE`: Dates
-- `TIME`: Times
-- `MONEY`: Monetary amounts
-- `PERCENT`: Percentages
-- `FACILITY`: Facilities
-- `PRODUCT`: Products
-- `EVENT`: Events
-- `LAW`: Laws
-
-**Errors**:
-- `404`: Session not found
-- `401`: Missing/invalid token
-
----
-
-### RAG - Semantic Search
-
-**Endpoint**: `POST /api/v2/semantic-search`
-
-**Headers**:
-```
-Authorization: Bearer <token>
-Content-Type: application/json
-```
-
-**Request**:
-```json
-{
-  "session_id": "550e8400-e29b-41d4-a716-446655440000",
-  "query": "payment schedule",
-  "top_k": 3
-}
-```
-
-**Response** (200 OK):
-```json
-{
-  "query": "payment schedule",
-  "results": [
-    {
-      "chunk": "The payment schedule is as follows: $250,000 due on signing, $250,000 due upon completion.",
-      "similarity_score": 0.92,
-      "document": "contract.pdf",
-      "chunk_id": 5
-    },
-    {
-      "chunk": "Monthly payments of $5,000 are due on the first of each month for 24 months.",
-      "similarity_score": 0.88,
-      "document": "invoice.png",
-      "chunk_id": 12
-    }
-  ],
-  "processing_time_ms": 127
-}
-```
-
-**Parameters**:
-- `session_id` (required): UUID of session
-- `query` (required): Search query (max 500 chars)
-- `top_k` (optional): Number of results (default: 3, max: 10)
-
-**Errors**:
-- `404`: Session not found
-- `401`: Missing/invalid token
-
----
-
-## Health & Monitoring (v2)
-
-### Health Check
-
-**Endpoint**: `GET /health`
-
-**Response** (200 OK):
-```json
-{
-  "status": "healthy",
-  "version": "2.0.0",
-  "timestamp": "2024-01-15T10:30:00Z"
-}
-```
-
----
-
-### Detailed Health
-
-**Endpoint**: `GET /api/v2/health/detailed`
-
-**Response** (200 OK):
-```json
-{
-  "status": "healthy",
-  "version": "2.0.0",
-  "services": {
-    "api": "operational",
-    "extractor": "operational",
-    "qa_model": "operational",
-    "ner_model": "operational",
-    "embedding_model": "operational",
-    "cache": "operational",
-    "redis": "fallback_in_memory"
-  },
-  "uptime_seconds": 3600,
-  "timestamp": "2024-01-15T10:30:00Z"
-}
-```
-
----
-
-### Cache Statistics
-
-**Endpoint**: `GET /api/v2/cache/stats`
-
-**Headers**:
-```
-Authorization: Bearer <token>
-```
-
-**Response** (200 OK):
-```json
-{
-  "cache_type": "redis_with_fallback",
-  "redis_available": false,
-  "total_items": 127,
-  "embedding_cache_size": 45,
-  "qa_cache_size": 82,
-  "hit_rate": 0.67,
-  "memory_mb": 12.3,
-  "ttl_seconds": 3600
-}
-```
-
----
-
-### Model Status
-
-**Endpoint**: `GET /api/v2/models/status`
-
-**Headers**:
-```
-Authorization: Bearer <token>
-```
-
-**Response** (200 OK):
-```json
-{
-  "models": {
-    "qa": {
-      "name": "distilbert-base-cased-distilled-squad",
-      "status": "loaded",
-      "inference_time_ms": 245,
-      "last_used": "2024-01-15T10:29:50Z"
-    },
-    "ner": {
-      "name": "en_core_web_sm",
-      "status": "loaded",
-      "inference_time_ms": 127,
-      "last_used": "2024-01-15T10:28:30Z"
-    },
-    "embedding": {
-      "name": "all-MiniLM-L6-v2",
-      "status": "loaded",
-      "inference_time_ms": 95,
-      "last_used": "2024-01-15T10:29:00Z"
-    }
-  },
-  "gpu_available": false,
-  "active_sessions": 3
-}
-```
-
----
-
-### Prometheus Metrics
-
-**Endpoint**: `GET /metrics`
-
-**Response** (200 OK):
-```
-# HELP api_requests_total Total API requests
-# TYPE api_requests_total counter
-api_requests_total{endpoint="/api/v1/ask",method="POST",status="200"} 156
-
-# HELP api_request_duration_seconds Request latency
-# TYPE api_request_duration_seconds histogram
-api_request_duration_seconds_bucket{endpoint="/api/v1/ask",le="0.1"} 45
-api_request_duration_seconds_bucket{endpoint="/api/v1/ask",le="0.5"} 140
-api_request_duration_seconds_bucket{endpoint="/api/v1/ask",le="1.0"} 154
-
-# HELP model_inference_time_seconds Model inference latency
-# TYPE model_inference_time_seconds histogram
-model_inference_time_seconds_bucket{model="qa",le="0.1"} 10
-model_inference_time_seconds_bucket{model="qa",le="0.5"} 120
-
-# HELP active_sessions_total Number of active sessions
-# TYPE active_sessions_total gauge
-active_sessions_total 3
-
-# HELP cache_items_total Number of cached items
-# TYPE cache_items_total gauge
-cache_items_total 127
-```
-
----
-
-## Session Count
-
-**Endpoint**: `GET /api/v2/sessions/count`
-
-**Headers**:
-```
-Authorization: Bearer <token>
-```
-
-**Response** (200 OK):
-```json
-{
-  "active_sessions": 3,
-  "total_documents": 7,
-  "total_text_size_mb": 45.2,
-  "average_documents_per_session": 2.3,
-  "oldest_session_age_hours": 24
-}
-```
+**Note**: Entity extraction is now integrated into `/ask` and `/ask-detailed` endpoints with optional `highlight_entities` parameter for seamless entity highlighting in QA responses.
 
 ---
 
@@ -607,15 +404,27 @@ All endpoints return standardized error responses:
 
 ## Rate Limiting
 
-**Limits**:
-- Authenticated users: 100 requests / 60 seconds
-- Unauthenticated: 10 requests / 60 seconds
+**Per-endpoint limits** (all rates per IP address):
+- `POST /token`: 5 requests/minute
+- `POST /session`: 20 requests/minute
+- `POST /upload`: 10 requests/minute
+- `GET /session/{id}`: 30 requests/minute
+- `DELETE /session/{id}`: 20 requests/minute
+- `POST /ask`: 30 requests/minute
+- `POST /ask-detailed`: 30 requests/minute
 
 **Response Headers**:
 ```
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 95
-X-RateLimit-Reset: 1705319400
+X-RateLimit-Limit: 30
+X-RateLimit-Remaining: 29
+X-RateLimit-Reset: 1705319460
+```
+
+**Rate Limited Response** (429):
+```json
+{
+  "detail": "Rate limit exceeded"
+}
 ```
 
 ---

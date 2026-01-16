@@ -10,6 +10,7 @@ import os
 import tempfile
 from app.services.extractor import TextExtractor
 from app.dependencies import verify_token
+from app.middleware import limiter
 import asyncio
 
 router = APIRouter()
@@ -77,6 +78,7 @@ async def process_ner_background(session_id: str, doc_id: str, text: str, sessio
         logger.error(f"[NER-{doc_id[:8]}] ERROR: {type(e).__name__}: {str(e)}", exc_info=True)
         session_storage.set_ner_status(session_id, doc_id, "failed")
 
+@limiter.limit("20/minute")
 @router.post("/session")
 async def create_session(request: Request, token: dict = Depends(verify_token)):
     """
@@ -96,6 +98,7 @@ async def create_session(request: Request, token: dict = Depends(verify_token)):
         "status": "created"
     }
 
+@limiter.limit("10/minute")
 @router.post("/upload")
 async def upload_documents(
     request: Request,
@@ -233,6 +236,7 @@ async def upload_documents(
         "documents": uploaded_docs
     }
 
+@limiter.limit("30/minute")
 @router.get("/session/{session_id}")
 async def get_session_info(request: Request, session_id: str, token: dict = Depends(verify_token)):
     """
@@ -272,6 +276,7 @@ async def get_session_info(request: Request, session_id: str, token: dict = Depe
         ]
     }
 
+@limiter.limit("20/minute")
 @router.delete("/session/{session_id}")
 async def delete_session(request: Request, session_id: str, token: dict = Depends(verify_token)):
     """
